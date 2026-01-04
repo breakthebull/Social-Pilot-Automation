@@ -7,12 +7,13 @@ interface QueueProps {
   posts: Post[];
   brandName: string;
   onUpdateStatus: (id: string, status: PostStatus) => void;
+  onUpdateSchedule: (id: string, timestamp: number) => void;
   onDelete: (id: string) => void;
   onReorder: (reorderedPosts: Post[]) => void;
-  settings?: Settings; // Added settings as optional for safety, though it should be provided
+  settings?: Settings;
 }
 
-const Queue: React.FC<QueueProps> = ({ posts, brandName, onUpdateStatus, onDelete, onReorder, settings }) => {
+const Queue: React.FC<QueueProps> = ({ posts, brandName, onUpdateStatus, onUpdateSchedule, onDelete, onReorder, settings }) => {
   const queuePosts = posts.filter(p => p.status === PostStatus.DRAFT || p.status === PostStatus.APPROVED);
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
 
@@ -23,6 +24,12 @@ const Queue: React.FC<QueueProps> = ({ posts, brandName, onUpdateStatus, onDelet
 
   const handleApprove = (id: string) => {
     onUpdateStatus(id, PostStatus.APPROVED);
+  };
+
+  const handleDateChange = (id: string, dateStr: string) => {
+    if (!dateStr) return;
+    const date = new Date(dateStr);
+    onUpdateSchedule(id, date.getTime());
   };
 
   const onDragStart = (e: React.DragEvent, index: number) => {
@@ -53,12 +60,19 @@ const Queue: React.FC<QueueProps> = ({ posts, brandName, onUpdateStatus, onDelet
     onReorder(newQueue);
   };
 
+  // Convert timestamp to datetime-local string
+  const toLocalISOString = (timestamp: number) => {
+    const date = new Date(timestamp);
+    const offset = date.getTimezoneOffset() * 60000;
+    return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Automation Queue</h2>
-          <p className="text-slate-500">Drag to reorder. Visual mockups of your scheduled and pending posts.</p>
+          <p className="text-slate-500">Scheduled for 12:00 PM daily by default. Adjust manually below.</p>
         </div>
       </div>
 
@@ -81,65 +95,72 @@ const Queue: React.FC<QueueProps> = ({ posts, brandName, onUpdateStatus, onDelet
               onDragStart={(e) => onDragStart(e, index)}
               onDragEnd={onDragEnd}
               onDragOver={(e) => onDragOver(e, index)}
-              className="cursor-move transition-transform duration-200 active:scale-95"
+              className="cursor-move transition-transform duration-200 active:scale-95 group"
             >
-              <FacebookPreview 
-                content={post.content}
-                brandName={brandName}
-                profilePicture={settings?.profilePicture}
-                topic={post.topic}
-                mediaType={post.mediaType}
-                mediaUrl={post.mediaUrl}
-                actions={
-                  <div className="flex w-full items-center justify-between px-1">
-                     <div className="flex items-center space-x-2">
-                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                         post.status === PostStatus.APPROVED ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                       }`}>
-                         {post.status}
-                       </span>
-                       <span className="text-[10px] text-slate-400 font-medium">
-                         {new Date(post.scheduledFor).toLocaleDateString()}
-                       </span>
-                     </div>
-                     <div className="flex space-x-2">
-                      {post.status === PostStatus.DRAFT && (
-                        <button 
-                          onClick={() => handleApprove(post.id)}
-                          className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-md transition-colors"
-                          title="Approve Draft"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                        </button>
-                      )}
-                      {post.status === PostStatus.APPROVED && (
-                        <button 
-                          onClick={() => handlePostNow(post.id)}
-                          className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-md transition-colors"
-                        >
-                          Post Now
-                        </button>
-                      )}
-                      <button 
-                        onClick={() => onDelete(post.id)}
-                        className="p-1.5 bg-red-50 text-red-500 hover:bg-red-100 rounded-md transition-colors"
-                        title="Delete"
-                      >
-                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                      </button>
-                      <div className="p-1.5 text-slate-300">
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-12a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
-                        </svg>
+              <div className="relative">
+                <div className="absolute top-2 left-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-indigo-600 text-white text-[10px] font-bold px-2 py-1 rounded shadow-lg pointer-events-none">
+                  Drag to Reorder
+                </div>
+                <FacebookPreview 
+                  content={post.content}
+                  brandName={brandName}
+                  profilePicture={settings?.personas.find(p => p.id === post.personaId)?.profilePicture}
+                  topic={post.topic}
+                  mediaType={post.mediaType}
+                  mediaUrl={post.mediaUrl}
+                  actions={
+                    <div className="flex flex-col w-full space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                          post.status === PostStatus.APPROVED ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                        }`}>
+                          {post.status}
+                        </span>
+                        <div className="flex space-x-2">
+                          {post.status === PostStatus.DRAFT && (
+                            <button 
+                              onClick={() => handleApprove(post.id)}
+                              className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 rounded-md transition-colors"
+                              title="Approve Draft"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            </button>
+                          )}
+                          {post.status === PostStatus.APPROVED && (
+                            <button 
+                              onClick={() => handlePostNow(post.id)}
+                              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold rounded-md transition-colors"
+                            >
+                              Post Now
+                            </button>
+                          )}
+                          <button 
+                            onClick={() => onDelete(post.id)}
+                            className="p-1.5 bg-red-50 text-red-500 hover:bg-red-100 rounded-md transition-colors"
+                            title="Delete"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-col space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Schedule</label>
+                        <input 
+                          type="datetime-local"
+                          value={toLocalISOString(post.scheduledFor)}
+                          onChange={(e) => handleDateChange(post.id, e.target.value)}
+                          className="w-full text-[11px] px-2 py-1.5 border border-slate-200 rounded-lg outline-none focus:ring-1 focus:ring-indigo-500 bg-white"
+                        />
                       </div>
                     </div>
-                  </div>
-                }
-              />
+                  }
+                />
+              </div>
             </div>
           ))}
         </div>

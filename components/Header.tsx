@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Settings } from '../types';
 
 interface HeaderProps {
@@ -7,6 +7,27 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ settings }) => {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    });
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
+
+  // For the default display in Header, we pick the first persona or name it Generic
+  const activePersona = settings.personas[0];
+
   return (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 sticky top-0 z-10">
       <div className="flex items-center text-slate-400">
@@ -17,6 +38,16 @@ const Header: React.FC<HeaderProps> = ({ settings }) => {
       </div>
 
       <div className="flex items-center space-x-6">
+        {deferredPrompt && (
+          <button 
+            onClick={handleInstallClick}
+            className="flex items-center px-3 py-1.5 bg-indigo-50 text-indigo-600 rounded-lg border border-indigo-100 text-xs font-bold hover:bg-indigo-100 transition-colors"
+          >
+            <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a2 2 0 002 2h12a2 2 0 002-2v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+            Download App
+          </button>
+        )}
+
         <button className="text-slate-500 hover:text-indigo-600 relative">
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
@@ -25,10 +56,10 @@ const Header: React.FC<HeaderProps> = ({ settings }) => {
         </button>
         <div className="flex items-center space-x-3">
           <div className="text-right hidden sm:block">
-            <p className="text-sm font-semibold text-slate-800">{settings.displayName}</p>
+            <p className="text-sm font-semibold text-slate-800">{activePersona?.displayName || 'SocialPilot User'}</p>
             <p className="text-xs text-slate-500">Account Owner</p>
           </div>
-          <img className="w-9 h-9 rounded-full object-cover ring-2 ring-slate-100" src={settings.profilePicture} alt="Avatar" />
+          <img className="w-9 h-9 rounded-full object-cover ring-2 ring-slate-100" src={activePersona?.profilePicture || 'https://picsum.photos/seed/generic/200/200'} alt="Avatar" />
         </div>
       </div>
     </header>

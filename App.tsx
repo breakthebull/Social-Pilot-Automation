@@ -8,6 +8,7 @@ import Generator from './views/Generator';
 import Queue from './views/Queue';
 import History from './views/History';
 import SettingsView from './views/Settings';
+import { sendNotification, requestNotificationPermission } from './services/notifications';
 
 const STORAGE_KEY_POSTS = 'social_pilot_posts';
 const STORAGE_KEY_SETTINGS = 'social_pilot_settings';
@@ -50,6 +51,7 @@ const App: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
+    requestNotificationPermission();
     const savedPosts = localStorage.getItem(STORAGE_KEY_POSTS);
     const savedSettings = localStorage.getItem(STORAGE_KEY_SETTINGS);
 
@@ -69,6 +71,18 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!isInitializing) {
       localStorage.setItem(STORAGE_KEY_POSTS, JSON.stringify(posts));
+      
+      // Check for low queue reminder
+      const queueCount = posts.filter(p => p.status === PostStatus.APPROVED || p.status === PostStatus.DRAFT).length;
+      if (queueCount < 3 && posts.length > 0) {
+        // Debounced or throttled would be better, but for this app a simple session check or count is fine
+        const lastRemind = localStorage.getItem('last_remind_time');
+        const now = Date.now();
+        if (!lastRemind || now - parseInt(lastRemind) > 86400000) { // Max once per day
+           sendNotification("Queue is Low!", "Your content queue is looking empty. Time to generate more posts?");
+           localStorage.setItem('last_remind_time', now.toString());
+        }
+      }
     }
   }, [posts, isInitializing]);
 
@@ -79,18 +93,43 @@ const App: React.FC = () => {
   }, [settings, isInitializing]);
 
   const addPosts = (newPosts: Omit<Post, 'id' | 'status' | 'createdAt' | 'scheduledFor'>[]) => {
-    const formatted: Post[] = newPosts.map(p => ({
-      ...p,
-      id: Math.random().toString(36).substr(2, 9),
-      status: PostStatus.DRAFT,
-      createdAt: Date.now(),
-      scheduledFor: Date.now() + 86400000
-    }));
+    // Logic for "Noon everyday" scheduling
+    const approvedPosts = posts.filter(p => p.status === PostStatus.APPROVED).sort((a, b) => b.scheduledFor - a.scheduledFor);
+    let startTimestamp = approvedPosts.length > 0 ? approvedPosts[0].scheduledFor : Date.now();
+    
+    const formatted: Post[] = newPosts.map((p, idx) => {
+      // Calculate next noon
+      const date = new Date(startTimestamp);
+      date.setDate(date.getDate() + 1);
+      date.setHours(12, 0, 0, 0);
+      const scheduledTime = date.getTime();
+      startTimestamp = scheduledTime; // Advance cursor
+
+      return {
+        ...p,
+        id: Math.random().toString(36).substr(2, 9),
+        status: PostStatus.DRAFT,
+        createdAt: Date.now(),
+        scheduledFor: scheduledTime
+      };
+    });
     setPosts(prev => [...formatted, ...prev]);
   };
 
   const updatePostStatus = (id: string, status: PostStatus) => {
-    setPosts(prev => prev.map(p => p.id === id ? { ...p, status } : p));
+    setPosts(prev => prev.map(p => {
+      if (p.id === id) {
+        if (status === PostStatus.POSTED) {
+           sendNotification("Post Published!", `Your post about "${p.topic}" is now live on Facebook.`);
+        }
+        return { ...p, status };
+      }
+      return p;
+    }));
+  };
+
+  const updatePostSchedule = (id: string, timestamp: number) => {
+    setPosts(prev => prev.map(p => p.id === id ? { ...p, scheduledFor: timestamp } : p));
   };
 
   const deletePost = (id: string) => {
@@ -128,6 +167,7 @@ const App: React.FC = () => {
                 posts={posts} 
                 brandName={settings.brandName}
                 onUpdateStatus={updatePostStatus} 
+                onUpdateSchedule={updatePostSchedule}
                 onDelete={deletePost} 
                 onReorder={reorderPosts}
                 settings={settings}
